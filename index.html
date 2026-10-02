@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>申论格子纸</title>
+<style>
+  :root {
+    --bg: #ececec; --paper: #fff; --line: #e36c6c; --ink: #1a1a1a; --muted: #6b6b6b;
+    --cols: 25; --rows: 28; --cell: calc(170mm / var(--cols));
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #app { display: flex; height: 100vh; }
+  #main { flex: 1; overflow: auto; padding: 24px 0 80px; position: relative; }
+  .toolbar { display: flex; gap: 12px; align-items: center; padding: 8px 24px; background: #fff; border-bottom: 1px solid #d8d8d8; position: sticky; top: 0; z-index: 5; }
+  .toolbar label { color: var(--muted); font-size: 13px; }
+  .toolbar select, .toolbar input[type=number] { font-size: 13px; padding: 2px 4px; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .hint { color: var(--muted); font-size: 12px; }
+  .page { width: 210mm; min-height: 297mm; margin: 20px auto; background: var(--paper); box-shadow: 0 1px 4px rgba(0,0,0,.18); padding: 14mm 20mm 10mm; position: relative; }
+  .page-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 4mm; }
+  .grid { display: inline-grid; grid-template-columns: repeat(var(--cols), var(--cell)); grid-auto-rows: var(--cell); gap: 1px; background: var(--line); border: 1.5px solid var(--line); cursor: text; }
+  .cell { background: var(--paper); position: relative; display: flex; align-items: center; justify-content: center; font-family: "Kaiti SC", "STKaiti", "KaiTi", "FangSong", serif; font-size: calc(var(--cell) * .72); line-height: 1; user-select: none; }
+  .cell.caret::before { content: ""; position: absolute; left: 0; top: 10%; height: 80%; width: 2px; background: var(--ink); animation: blink 1s steps(1) infinite; }
+  .cell.caret.right::before { left: auto; right: 0; }
+  .cell.comp { text-decoration: underline; color: #555; }
+  .grid.focused .cell.caret::before { background: #d33; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .page-foot { display: flex; gap: 24px; justify-content: flex-end; color: var(--muted); font-size: 12px; margin-top: 4mm; }
+  .page-foot b { color: var(--ink); font-weight: 600; }
+  #side { width: 240px; background: #f7f7f7; border-right: 1px solid #d8d8d8; display: flex; flex-direction: column; }
+  #side .head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 8px; font-weight: 600; }
+  #side input[type=search] { margin: 0 12px 8px; padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 13px; }
+  #list { flex: 1; overflow: auto; }
+  .doc { padding: 8px 14px; border-bottom: 1px solid #e6e6e6; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
+  .doc:hover { background: #efefef; }
+  .doc.cur { background: #e3e8f0; }
+  .doc .t { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc .m { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .doc .del { color: #999; font-size: 12px; align-self: center; flex: none; }
+  .doc .del:hover { color: #c33; }
+  .doc .del.ask { color: #c33; font-weight: 600; }
+  button { font-size: 13px; padding: 3px 10px; border: 1px solid #bbb; background: #fff; border-radius: 3px; cursor: pointer; }
+  button:hover { background: #f0f0f0; }
+  #title { font-size: 14px; padding: 3px 6px; border: 1px solid transparent; border-radius: 3px; width: 220px; }
+  #title:hover, #title:focus { border-color: #ccc; }
+  #saved { color: var(--muted); font-size: 12px; }
+  .page-head .pdel { cursor: pointer; margin-left: 10px; color: #999; }
+  .page-head .pdel:hover, .page-head .pdel.ask { color: #c33; }
+  #file { display: none; }
+  @media print {
+    @page { size: A4; margin: 0; }
+    body { background: #fff; }
+    #app, #main { display: block; height: auto; overflow: visible; }
+    #side, .toolbar, .pdel, #ta { display: none !important; }
+    #main { padding: 0; }
+    .page { margin: 0; box-shadow: none; page-break-after: always; break-after: page; }
+    .page:last-child { page-break-after: auto; }
+    .grid, .cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cell.caret::before { display: none; }
+  }
+  #ta { position: absolute; width: 1px; height: 1px; opacity: 0; padding: 0; border: 0; resize: none; overflow: hidden; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <div class="head"><span>申论格子纸</span><button id="newBtn">+ 新建</button></div>
+    <input id="search" type="search" placeholder="搜标题 / 正文">
+    <div id="list"></div>
+  </div>
+  <div id="main">
+    <div class="toolbar">
+      <input id="title" placeholder="未命名">
+      <span id="saved"></span>
+      <span class="spacer"></span>
+      <button id="cutBtn" title="Ctrl+Enter">截断换纸</button>
+      <button id="printBtn">打印 / PDF</button>
+      <button id="txtBtn">导出文本</button>
+      <button id="exportBtn">备份全部</button>
+      <button id="importBtn">导入备份</button>
+      <input id="file" type="file" accept=".json,application/json">
+      <label>每行 <select id="colsSel"><option>20</option><option>22</option><option selected>25</option></select> 格</label>
+      <label>每页 <input id="rowsInp" type="number" min="10" max="40" value="28" style="width:48px"> 行</label>
+      <label><input id="indentChk" type="checkbox" checked> 段首空两格</label>
+      <span class="hint">点格子打字 · 回车换行 · Ctrl+Enter 截断换纸</span>
+    </div>
+    <div id="pages"></div>
+    <textarea id="ta" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const ta = $('#ta'), pagesEl = $('#pages');
+const PUNCT = /[\s\p{P}\p{S}]/u;
+const state = { cols: 25, rows: 28, indent: true };
+let composing = false;
+
+// 排版：把整段文本铺进若干页；'\n' 换行，'\f' 截断换纸；返回每页的格子表与光标映射
+function layout(text) {
+  const { cols, rows, indent } = state;
+  const pages = []; let page, r, c;
+  const pos = new Array(text.length + 1);      // utf16 idx -> {p,r,c}
+  const newPage = (start) => { page = { start, end: start, cells: [], chars: 0, words: 0, cut: false }; pages.push(page); r = 0; c = 0; startLine(); };
+  const startLine = () => { c = indent ? Math.min(2, cols) : 0; };
+  const put = (idx, ch, cls) => { page.cells[r * cols + c] = { ch, idx, cls }; };
+  const fillRest = (idx) => { for (let k = r * cols + c; k < rows * cols; k++) if (!page.cells[k]) page.cells[k] = { ch: '', idx }; };
+  const newRow = () => { r++; c = 0; if (r >= rows) { page.end = i; newPage(i); return true; } return false; };
+  let i = 0;
+  newPage(0);
+  for (const ch of text) {
+    const len = ch.length;
+    if (ch === '\n') {
+      pos[i] = { p: pages.length - 1, r, c };
+      for (let k = r * cols + c; k < (r + 1) * cols; k++) page.cells[k] = { ch: '', idx: i };
+      if (!newRow()) startLine();
+      // 回车正好落在页末：pos 已记在旧页，不动
+    } else if (ch === '\f') {
+      pos[i] = { p: pages.length - 1, r, c };
+      fillRest(i); page.cut = true; page.end = i + len; newPage(i + len);
+    } else {
+      if (c >= cols && newRow()) c = 0;            // 续行不缩进，翻页也不缩进
+      pos[i] = { p: pages.length - 1, r, c };
+      put(i, ch); page.chars++; if (!PUNCT.test(ch)) page.words++; c++;
+    }
+    i += len;
+  }
+  pos[text.length] = { p: pages.length - 1, r, c };
+  page.end = text.length; fillRest(text.length);
+  return { pages, pos };
+}
+
+function render() {
+  const text = ta.value, { cols, rows } = state;
+  const { pages, pos } = layout(text);
+  const sel = ta.selectionStart, cp = pos[sel] || pos[text.length];
+  const compStart = composing ? compRange[0] : -1, compEnd = composing ? compRange[1] : -1;
+  let total = 0, totalW = 0, html = '';
+  pages.forEach((pg, p) => {
+    total += pg.chars; totalW += pg.words;
+    let cells = '';
+    for (let k = 0; k < rows * cols; k++) {
+      const cell = pg.cells[k] || { ch: '', idx: text.length };
+      const r = Math.floor(k / cols), c = k % cols;
+      let cls = 'cell';
+      if (cp.p === p && cp.r === r && (cp.c === c || (cp.c >= cols && c === cols - 1))) cls += cp.c >= cols ? ' caret right' : ' caret';
+      if (cell.idx >= compStart && cell.idx < compEnd && cell.ch) cls += ' comp';
+      cells += `<div class="${cls}" data-idx="${cell.idx}">${esc(cell.ch)}</div>`;
+    }
+    html += `<div class="page" data-p="${p}"><div class="page-head"><span>申论答题纸${cur && cur.title ? ' · ' + esc(cur.title) : ''}</span><span>第 ${p + 1} 页${pg.cut ? ' · 此页截断' : ''}<span class="pdel" data-del="${p}">删除此页</span></span></div>
+      <div class="grid${document.activeElement === ta ? ' focused' : ''}">${cells}</div>
+      <div class="page-foot"><span>本页 <b>${pg.chars}</b> 格 · 不含标点 <b>${pg.words}</b> 字</span><span>累计 <b>${total}</b> 格 · 不含标点 <b>${totalW}</b> 字</span></div></div>`;
+  });
+  pagesEl.innerHTML = html;
+  // 把隐藏输入框挪到光标处，输入法候选框才会跟着走
+  const caret = pagesEl.querySelector('.cell.caret');
+  if (caret) { const m = $('#main'), a = caret.getBoundingClientRect(), b = m.getBoundingClientRect(); ta.style.left = (a.left - b.left + m.scrollLeft) + 'px'; ta.style.top = (a.top - b.top + m.scrollTop) + 'px'; }
+}
+const esc = s => s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+
+let compRange = [0, 0];
+ta.addEventListener('compositionstart', () => { composing = true; compRange = [ta.selectionStart, ta.selectionStart]; });
+ta.addEventListener('compositionend', () => { composing = false; render(); });
+ta.addEventListener('input', () => { if (composing) compRange[1] = ta.selectionEnd; render(); });
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); insertAt('\f'); return; }
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) {        // 上下键按格子走，不按隐藏框的折行走
+    e.preventDefault();
+    const { pages, pos } = layout(ta.value), cp = pos[ta.selectionStart]; if (!cp) return;
+    const r = cp.r + (e.key === 'ArrowUp' ? -1 : 1); let idx = null;
+    if (r >= 0 && r < state.rows) { const cell = pages[cp.p].cells[r * state.cols + Math.min(cp.c, state.cols - 1)]; if (cell) idx = cell.idx; }
+    else if (r < 0 && cp.p > 0) idx = pages[cp.p - 1].end - (pages[cp.p - 1].cut ? 1 : 0);
+    else if (r >= state.rows && cp.p < pages.length - 1) idx = pages[cp.p + 1].start;
+    if (idx !== null) { ta.setSelectionRange(idx, idx); render(); }
+  }
+});
+document.addEventListener('selectionchange', () => { if (document.activeElement === ta && !composing) render(); });
+ta.addEventListener('focus', render); ta.addEventListener('blur', render);
+function insertAt(s) {
+  const a = ta.selectionStart, b = ta.selectionEnd;
+  ta.setRangeText(s, a, b, 'end'); ta.dispatchEvent(new Event('input'));
+}
+pagesEl.addEventListener('click', e => {
+  const d = e.target.closest('.pdel'); if (!d) return;
+  if (!d.classList.contains('ask')) { d.classList.add('ask'); d.textContent = '确认删除此页?'; setTimeout(() => { d.classList.remove('ask'); d.textContent = '删除此页'; }, 3000); return; }
+  const pg = layout(ta.value).pages[+d.dataset.del];
+  ta.setRangeText('', pg.start, pg.end, 'start'); ta.dispatchEvent(new Event('input'));
+});
+pagesEl.addEventListener('mousedown', e => {
+  const cell = e.target.closest('.cell'); if (!cell) return;
+  e.preventDefault();
+  const idx = +cell.dataset.idx; ta.focus(); ta.setSelectionRange(idx, idx); render();
+});
+function applySettings() {
+  state.cols = +$('#colsSel').value; state.rows = +$('#rowsInp').value || 28; state.indent = $('#indentChk').checked;
+  document.documentElement.style.setProperty('--cols', state.cols); document.documentElement.style.setProperty('--rows', state.rows);
+  if (cur) { Object.assign(cur, { cols: state.cols, rows: state.rows, indent: state.indent }); scheduleSave(); }
+  render();
+}
+['#colsSel', '#rowsInp', '#indentChk'].forEach(s => $(s).addEventListener('change', applySettings));
+$('#cutBtn').addEventListener('click', () => { ta.focus(); insertAt('\f'); });
+
+// ---------- 本地留存：localStorage，停笔 1 秒自动保存 ----------
+const KEY = 'shenlun-grid-v1';
+let db = { docs: [] }, cur = null, saveTimer = null;
+try { db = JSON.parse(localStorage.getItem(KEY)) || db; } catch (e) {}
+const fmtTime = t => { const d = new Date(t), p = n => String(n).padStart(2, '0'); return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+function persist() {
+  saveTimer = null;
+  if (cur) { cur.text = ta.value; cur.title = $('#title').value.trim(); cur.updated = Date.now(); }
+  try { localStorage.setItem(KEY, JSON.stringify(db)); $('#saved').textContent = '已保存 ' + fmtTime(Date.now()); }
+  catch (e) { $('#saved').textContent = '保存失败：' + e.message; }
+  renderList();
+}
+function scheduleSave() { $('#saved').textContent = '编辑中…'; clearTimeout(saveTimer); saveTimer = setTimeout(persist, 1000); }
+function flushSave() { if (saveTimer) persist(); }
+function newDoc() {
+  const d = { id: Date.now().toString(36), title: '', text: '', cols: 25, rows: 28, indent: true, created: Date.now(), updated: Date.now() };
+  db.docs.unshift(d); openDoc(d.id); persist(); ta.focus();
+}
+function openDoc(id) {
+  flushSave();
+  cur = db.docs.find(d => d.id === id); if (!cur) return;
+  $('#title').value = cur.title; ta.value = cur.text;
+  $('#colsSel').value = cur.cols; $('#rowsInp').value = cur.rows; $('#indentChk').checked = cur.indent;
+  ta.setSelectionRange(cur.text.length, cur.text.length);
+  applySettings(); renderList(); $('#main').scrollTop = 0;
+}
+function deleteDoc(id) {
+  db.docs = db.docs.filter(d => d.id !== id);
+  if (cur && cur.id === id) { cur = null; if (db.docs.length) openDoc(db.docs[0].id); else newDoc(); }
+  persist();
+}
+function renderList() {
+  const q = $('#search').value.trim().toLowerCase();
+  const docs = [...db.docs].sort((a, b) => b.updated - a.updated)
+    .filter(d => !q || (d.title + '\n' + d.text).toLowerCase().includes(q));
+  $('#list').innerHTML = docs.map(d => {
+    const name = d.title || d.text.replace(/[\n\f]/g, ' ').trim().slice(0, 14) || '未命名';
+    const n = Array.from(d.text).filter(ch => ch !== '\n' && ch !== '\f').length;
+    return `<div class="doc${cur && d.id === cur.id ? ' cur' : ''}" data-id="${d.id}"><div><div class="t">${esc(name)}</div><div class="m">${fmtTime(d.updated)} · ${n} 格</div></div><span class="del" data-del="${d.id}">删除</span></div>`;
+  }).join('') || '<div class="doc"><div class="m">没有匹配的文档</div></div>';
+}
+$('#list').addEventListener('click', e => {
+  const del = e.target.closest('.del');
+  if (del) {
+    if (!del.classList.contains('ask')) { del.classList.add('ask'); del.textContent = '确认?'; setTimeout(() => { del.classList.remove('ask'); del.textContent = '删除'; }, 3000); return; }
+    deleteDoc(del.dataset.del); return;
+  }
+  const item = e.target.closest('.doc'); if (item && item.dataset.id) openDoc(item.dataset.id);
+});
+$('#newBtn').addEventListener('click', newDoc);
+$('#search').addEventListener('input', renderList);
+$('#title').addEventListener('input', scheduleSave);
+ta.addEventListener('input', scheduleSave);
+window.addEventListener('beforeunload', flushSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
+// ---------- 导出 / 导入 / 打印 ----------
+function download(name, content, type) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content], { type })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
+$('#exportBtn').addEventListener('click', () => { flushSave(); download(`申论格子纸备份-${stamp()}.json`, JSON.stringify(db, null, 1), 'application/json'); });
+$('#txtBtn').addEventListener('click', () => {
+  flushSave(); const { pages } = layout(ta.value);
+  const body = pages.map((pg, i) => `——— 第 ${i + 1} 页（${pg.chars} 格 / 不含标点 ${pg.words} 字）———\n` + ta.value.slice(pg.start, pg.end).replace(/\f/g, '')).join('\n\n');
+  download(`${cur.title || '未命名'}-${stamp()}.txt`, body, 'text/plain;charset=utf-8');
+});
+$('#importBtn').addEventListener('click', () => $('#file').click());
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files[0]; if (!f) return; e.target.value = '';
+  try {
+    const data = JSON.parse(await f.text()); if (!data || !Array.isArray(data.docs)) throw new Error('不是本工具的备份文件');
+    let added = 0, updated = 0;
+    for (const d of data.docs) {
+      if (!d || typeof d.text !== 'string') continue;
+      const old = db.docs.find(x => x.id === d.id);
+      if (!old) { db.docs.push(d); added++; } else if ((d.updated || 0) > (old.updated || 0)) { Object.assign(old, d); updated++; }
+    }
+    persist(); if (cur) openDoc(cur.id);
+    $('#saved').textContent = `导入完成：新增 ${added} 篇，更新 ${updated} 篇`;
+  } catch (err) { $('#saved').textContent = '导入失败：' + err.message; }
+});
+$('#printBtn').addEventListener('click', () => { flushSave(); window.print(); });
+if (db.docs.length) openDoc([...db.docs].sort((a, b) => b.updated - a.updated)[0].id); else newDoc();
+</script>
+</body>
+</html>
